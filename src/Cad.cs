@@ -58,7 +58,10 @@ namespace FramePrint
 
     public static class Cad
     {
-        public const string Version = "1.5.0";
+        public const string Version = "1.6.0";
+
+        /// <summary>Последняя печать прошла без замечаний (тогда итог не показывается окном).</summary>
+        public static bool LastOk;
         public static Document Doc { get { return AcApp.DocumentManager.MdiActiveDocument; } }
 
         // =====================================================================
@@ -587,6 +590,7 @@ namespace FramePrint
 
         public static string Publish(Settings st, List<FrameRow> allRows, bool toPdf, string templateName)
         {
+            LastOk = false;
             Document doc = Doc;
             Database db = doc.Database;
             if (!File.Exists(doc.Name))
@@ -775,6 +779,9 @@ namespace FramePrint
                 (st.PrintReverse ? "\nПорядок: от последнего листа к первому" : ""));
             if (sroNote != null) msg.Append("\n" + sroNote);
             if (problems.Count > 0) msg.Append("\nПропущено:\n" + string.Join("\n", problems.ToArray()));
+            bool fileOk = !toPdf || !st.MultiPage || File.Exists(pdfPath);
+            bool sroFailed = sroNote != null && (sroNote.Contains("не вставлен") || sroNote.Contains("не найден"));
+            LastOk = fileOk && problems.Count == 0 && !sroFailed;
             return msg.ToString();
         }
 

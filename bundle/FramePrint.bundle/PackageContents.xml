@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ApplicationPackage SchemaVersion="1.0" AutodeskProduct="AutoCAD" ProductType="Application"
-  Name="FramePrint" Description="Пакетная печать рамок в PDF" AppVersion="1.5.0" Author="akproekt"
+  Name="FramePrint" Description="Пакетная печать рамок в PDF" AppVersion="1.6.0" Author="akproekt"
   ProductCode="{6E4A1C3B-2B7D-4C1E-9F2A-6A51F0C2D7B1}" UpgradeCode="{0F1B8E52-5D7A-4C33-8E0B-3B9A2C4D5E61}">
   <CompanyDetails Name="akproekt" />
   <Components>

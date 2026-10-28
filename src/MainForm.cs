@@ -451,7 +451,9 @@ namespace FramePrint
                     ui.End();
                 }
                 Cursor = Cursors.Default;
-                MessageBox.Show(this, msg, Text);
+                // без замечаний — только строка в командной строке AutoCAD; с замечаниями — окно
+                try { Cad.Doc.Editor.WriteMessage("\nFramePrint: " + msg.Replace("\n", "\nFramePrint: ") + "\n"); } catch { }
+                if (!Cad.LastOk) MessageBox.Show(this, msg, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             catch (Exception ex) { Cursor = Cursors.Default; Err(ex); }
         }
