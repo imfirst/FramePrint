@@ -7,13 +7,13 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("FramePrint Setup")]
 [assembly: AssemblyProduct("FramePrint")]
-[assembly: AssemblyVersion("1.4.0.0")]
+[assembly: AssemblyVersion("1.5.0.0")]
 
 namespace FramePrintSetup
 {
     static class Program
     {
-        const string Version = "1.4.0";
+        const string Version = "1.5.0";
         const string Title = "FramePrint " + Version;
         const string RegKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\FramePrint";
 

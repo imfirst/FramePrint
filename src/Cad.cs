@@ -58,7 +58,7 @@ namespace FramePrint
 
     public static class Cad
     {
-        public const string Version = "1.4.0";
+        public const string Version = "1.5.0";
         public static Document Doc { get { return AcApp.DocumentManager.MdiActiveDocument; } }
 
         // =====================================================================
@@ -770,7 +770,9 @@ namespace FramePrint
                 else if (st.MultiPage) msg.Append("Публикация завершена, но файл не найден: " + pdfPath + "\nСм. журнал AutoCAD.");
                 else msg.Append("PDF-файлы сохранены в папку: " + Path.GetDirectoryName(pdfPath));
             }
-            else msg.Append("Отправлено на печать листов: " + rows.Count);
+            else msg.Append("Отправлено на печать листов: " + rows.Count +
+                (Math.Max(1, st.Copies) > 1 ? ", комплектов: " + st.Copies : "") +
+                (st.PrintReverse ? "\nПорядок: от последнего листа к первому" : ""));
             if (sroNote != null) msg.Append("\n" + sroNote);
             if (problems.Count > 0) msg.Append("\nПропущено:\n" + string.Join("\n", problems.ToArray()));
             return msg.ToString();
@@ -1058,6 +1060,30 @@ namespace FramePrint
             string tmpDir = Path.Combine(Path.GetTempPath(), "FramePrint", "pages");
             Directory.CreateDirectory(tmpDir);
             foreach (string old in Directory.GetFiles(tmpDir, "*.pdf")) { try { File.Delete(old); } catch { } }
+
+            // ---- печать на принтер: комплектами, при желании от последнего листа к первому ----
+            if (!toPdf)
+            {
+                List<FrameRow> order = new List<FrameRow>(pages);   // порядок таблицы (сортировка не меняется)
+                if (st.PrintReverse) order.Reverse();
+                int sets = Math.Max(1, st.Copies);
+                int tot = 0;
+                foreach (FrameRow f in order) tot += Math.Max(1, f.Copies);
+                tot *= sets;
+                int n = 0;
+                for (int set = 0; set < sets; set++)
+                {
+                    foreach (FrameRow f in order)
+                    {
+                        for (int c = 0; c < Math.Max(1, f.Copies); c++)
+                        {
+                            bool cancelled = PlotOne(doc, db, st, f, null, ++n, tot);
+                            if (cancelled) throw new OperationCanceledException("Печать отменена.");
+                        }
+                    }
+                }
+                return;
+            }
 
             List<string> parts = new List<string>();
             List<string> titles = new List<string>();

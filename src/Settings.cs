@@ -219,6 +219,8 @@ namespace FramePrint
         public int SroMaxAgeDays { get; set; }
 
         // ---------- Прочее ----------
+        [Category("7. Печать"), DisplayName("Принтер: от последнего листа к первому"), Description("Только для печати на принтер. Порядок в таблице и в PDF не меняется.")]
+        public bool PrintReverse { get; set; }
         [Category("7. Печать"), DisplayName("Копий")]
         public int Copies { get; set; }
         [Category("7. Печать"), DisplayName("Инвертировать автоориентацию"), Description("Включите, если листы выходят повёрнутыми на 90°")]

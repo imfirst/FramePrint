@@ -19,7 +19,7 @@ namespace FramePrint
 
         ComboBox cbTemplate, cbSort;
         TextBox tbScale, tbLayers, tbSro;
-        CheckBox chModel, chLayouts, chSro;
+        CheckBox chModel, chLayouts, chSro, chReverse;
         NumericUpDown nuSroAfter, nuCopies;
         Label lbSroInfo, lbStatus;
         DataGridView grid;
@@ -121,8 +121,13 @@ namespace FramePrint
             bottom.Controls.Add(Btn("Ведомость", delegate { SheetList(); }, 100));
             bottom.Controls.Add(Btn("В CSV", delegate { ExportCsv(); }, 70));
             bottom.Controls.Add(Lbl("     Копий:"));
-            nuCopies = new NumericUpDown(); nuCopies.Minimum = 1; nuCopies.Maximum = 99; nuCopies.Width = 45; bottom.Controls.Add(nuCopies);
+            nuCopies = new NumericUpDown(); nuCopies.Minimum = 1; nuCopies.Maximum = 99; nuCopies.Width = 45; nuCopies.Value = 1; bottom.Controls.Add(nuCopies);
+            chReverse = new CheckBox(); chReverse.Text = "С последнего"; chReverse.AutoSize = true; chReverse.Padding = new Padding(0, 4, 0, 0);
+            bottom.Controls.Add(chReverse);
             Button bPrint = Btn("Печать", delegate { DoPublish(false); }, 100);
+            ToolTip tip = new ToolTip();
+            tip.SetToolTip(nuCopies, "Сколько комплектов печатать на принтер (каждый комплект целиком). В PDF всегда один.");
+            tip.SetToolTip(chReverse, "Печать на принтер от последнего листа к первому — пачка выходит в правильном порядке.\nСписок и PDF не меняются.");
             Button bPdf = Btn("Публикация в PDF", delegate { DoPublish(true); }, 140);
             bPdf.Font = new Font(Font, FontStyle.Bold);
             bottom.Controls.Add(bPrint); bottom.Controls.Add(bPdf);
@@ -170,7 +175,8 @@ namespace FramePrint
             cbSort.SelectedIndex = (int)st.Sort;
             chSro.Checked = st.SroEnabled;
             nuSroAfter.Value = Math.Max(0, Math.Min(999, st.SroAfterPage));
-            nuCopies.Value = Math.Max(1, Math.Min(99, st.Copies));
+            nuCopies.Value = 1;                       // копий по умолчанию — всегда одна
+            chReverse.Checked = st.PrintReverse;
             tbSro.Text = st.SroPath;
             UpdateSroInfo();
         }
@@ -186,6 +192,7 @@ namespace FramePrint
             st.SroEnabled = chSro.Checked;
             st.SroAfterPage = (int)nuSroAfter.Value;
             st.Copies = (int)nuCopies.Value;
+            st.PrintReverse = chReverse.Checked;
             st.SroPath = tbSro.Text;
             try { st.Save(); } catch { }
         }
