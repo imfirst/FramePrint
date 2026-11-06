@@ -74,7 +74,8 @@ namespace FramePrint
         [Description("Y-X: строками сверху вниз, слева направо")] YX,
         [Description("X-Y: столбцами слева направо, сверху вниз")] XY,
         [Description("По номеру листа")] SheetNumber,
-        [Description("Без сортировки")] None
+        [Description("Без сортировки")] None,
+        [Description("Как в альбоме: титул, листы 1…N, спецификация")] Album
     }
 
     /// <summary>Точка поиска текста в штампе: смещение от ПРАВОГО НИЖНЕГО угла рамки (мм на листе) и радиус.</summary>

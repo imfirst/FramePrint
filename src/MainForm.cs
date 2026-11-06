@@ -58,7 +58,7 @@ namespace FramePrint
             chLayouts = new CheckBox(); chLayouts.Text = "Листы"; chLayouts.AutoSize = true; top.Controls.Add(chLayouts);
             top.Controls.Add(Lbl("Сортировка:"));
             cbSort = new ComboBox(); cbSort.DropDownStyle = ComboBoxStyle.DropDownList; cbSort.Width = 150;
-            cbSort.Items.AddRange(new object[] { "Y-X (строками)", "X-Y (столбцами)", "По № листа", "Без сортировки" });
+            cbSort.Items.AddRange(new object[] { "Y-X (строками)", "X-Y (столбцами)", "По № листа", "Без сортировки", "Как в альбоме" });
             top.Controls.Add(cbSort);
             top.Controls.Add(Btn("Настройки…", delegate { EditSettings(); }));
 
@@ -101,6 +101,14 @@ namespace FramePrint
             left.Controls.Add(Btn("Показать", delegate { if (grid.CurrentRow != null) ShowRow(grid.CurrentRow.Index); }, 82));
             left.Controls.Add(Btn("Все ☑", delegate { SetAllPrint(true); }, 82));
             left.Controls.Add(Btn("Все ☐", delegate { SetAllPrint(false); }, 82));
+            Label sep = new Label(); sep.AutoSize = false; sep.Height = 10; sep.Width = 82; left.Controls.Add(sep);
+            Button bAlbum = Btn("По порядку", delegate { OrderAlbum(); }, 82);
+            Button bRev = Btn("Обратно ⇅", delegate { OrderReverse(); }, 82);
+            left.Controls.Add(bAlbum);
+            left.Controls.Add(bRev);
+            ToolTip lt = new ToolTip();
+            lt.SetToolTip(bAlbum, "Титул, затем листы по номеру 1…N, затем спецификация (шифр «.СО»)");
+            lt.SetToolTip(bRev, "Перевернуть текущий список: последний лист станет первым");
 
             // нижняя панель: СРО
             Panel sro = new Panel(); sro.Dock = DockStyle.Bottom; sro.Height = 36; sro.Padding = new Padding(6, 6, 6, 0);
@@ -328,6 +336,22 @@ namespace FramePrint
             FrameRow t = rows[i]; rows[i] = rows[j]; rows[j] = t;
             Fill();
             grid.CurrentCell = grid.Rows[j].Cells[0];
+        }
+
+        void OrderAlbum()
+        {
+            if (rows.Count < 2) return;
+            Cad.SortAlbum(rows);
+            Fill();
+            if (grid.Rows.Count > 0) grid.CurrentCell = grid.Rows[0].Cells[0];
+        }
+
+        void OrderReverse()
+        {
+            if (rows.Count < 2) return;
+            rows.Reverse();
+            Fill();
+            if (grid.Rows.Count > 0) grid.CurrentCell = grid.Rows[0].Cells[0];
         }
 
         void SetAllPrint(bool v)

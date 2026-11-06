@@ -58,7 +58,7 @@ namespace FramePrint
 
     public static class Cad
     {
-        public const string Version = "1.6.0";
+        public const string Version = "1.7.0";
 
         /// <summary>Последняя печать прошла без замечаний (тогда итог не показывается окном).</summary>
         public static bool LastOk;
@@ -152,9 +152,51 @@ namespace FramePrint
             return false;
         }
 
+        static readonly Regex NumRx = new Regex(@"^\s*(\d+(?:[.,]\d+)?)\s*$", RegexOptions.Compiled);
+        static readonly Regex SpecRx = new Regex(@"[.\-_\s](СО|CO|C0|С0)\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>Номер листа числом или null (титул, мусор в ячейке).</summary>
+        static double? SheetNo(FrameRow f)
+        {
+            Match m = NumRx.Match(f.Number ?? "");
+            if (!m.Success) return null;
+            return double.Parse(m.Groups[1].Value.Replace(',', '.'), CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>Лист спецификации: шифр оканчивается на «.СО» или наименование начинается со «Спецификация».</summary>
+        public static bool IsSpec(FrameRow f)
+        {
+            if (SpecRx.IsMatch(f.Cipher ?? "")) return true;
+            return (f.Name ?? "").TrimStart().StartsWith("Спецификац", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Порядок альбома: сначала листы без номера (титул), затем основные листы по номеру,
+        /// затем спецификация по номеру. При равных номерах сохраняется текущий порядок.
+        /// </summary>
+        public static void SortAlbum(List<FrameRow> list)
+        {
+            List<FrameRow> src = new List<FrameRow>(list);
+            List<int> idx = new List<int>();
+            for (int i = 0; i < src.Count; i++) idx.Add(i);
+            idx.Sort(delegate (int ia, int ib)
+            {
+                FrameRow a = src[ia], b = src[ib];
+                double? na = SheetNo(a), nb = SheetNo(b);
+                int ga = na == null ? 0 : (IsSpec(a) ? 2 : 1);
+                int gb = nb == null ? 0 : (IsSpec(b) ? 2 : 1);
+                if (ga != gb) return ga.CompareTo(gb);
+                if (na != null && nb != null && na.Value != nb.Value) return na.Value.CompareTo(nb.Value);
+                return ia.CompareTo(ib);
+            });
+            list.Clear();
+            foreach (int i in idx) list.Add(src[i]);
+        }
+
         public static void Sort(Settings st, List<FrameRow> list)
         {
             if (st.Sort == SortMode.None) return;
+            if (st.Sort == SortMode.Album) { SortAlbum(list); return; }
             if (st.Sort == SortMode.SheetNumber)
             {
                 list.Sort(delegate (FrameRow a, FrameRow b)
