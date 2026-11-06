@@ -9,6 +9,8 @@ using Autodesk.AutoCAD.Geometry;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using Font = System.Drawing.Font;
 using FlowDirection = System.Windows.Forms.FlowDirection;
+using AcDoc = Autodesk.AutoCAD.ApplicationServices.Document;
+using DocEventArgs = Autodesk.AutoCAD.ApplicationServices.DocumentCollectionEventArgs;
 
 namespace FramePrint
 {
@@ -16,6 +18,7 @@ namespace FramePrint
     {
         Settings st;
         List<FrameRow> rows = new List<FrameRow>();
+        AcDoc boundDoc;            // чертёж, к которому относится список рамок
 
         ComboBox cbTemplate, cbSort;
         TextBox tbScale, tbLayers, tbSro;
@@ -35,6 +38,96 @@ namespace FramePrint
             KeyPreview = true;
             Build();
             LoadFromSettings();
+            AcApp.DocumentManager.DocumentActivated += OnDocActivated;
+            AcApp.DocumentManager.DocumentToBeDestroyed += OnDocClosing;
+            UpdateTitle();
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            try
+            {
+                AcApp.DocumentManager.DocumentActivated -= OnDocActivated;
+                AcApp.DocumentManager.DocumentToBeDestroyed -= OnDocClosing;
+            }
+            catch { }
+            base.OnFormClosed(e);
+        }
+
+        // ------------------------------------------------- связь с AutoCAD (немодальное окно)
+        static string DocName(AcDoc d)
+        {
+            try { return d == null ? "" : Path.GetFileName(d.Name); } catch { return ""; }
+        }
+
+        void UpdateTitle()
+        {
+            string t = "Пакетная печать рамок  v" + Cad.Version;
+            if (boundDoc != null) t += "  —  " + DocName(boundDoc);
+            Text = t;
+            AcDoc act = AcApp.DocumentManager.MdiActiveDocument;
+            if (boundDoc != null && rows.Count > 0 && act != boundDoc)
+            {
+                lbStatus.Text = "Список относится к «" + DocName(boundDoc) + "». Печать пойдёт по нему; для другого чертежа нажмите «Найти все форматы».";
+                lbStatus.ForeColor = Color.DarkOrange;
+            }
+            else lbStatus.ForeColor = SystemColors.ControlText;
+        }
+
+        void OnDocActivated(object sender, DocEventArgs e)
+        {
+            try { if (!IsDisposed) { if (boundDoc == null || rows.Count == 0) Fill(); UpdateTitle(); } } catch { }
+        }
+
+        void OnDocClosing(object sender, DocEventArgs e)
+        {
+            if (e.Document != boundDoc) return;
+            try
+            {
+                boundDoc = null;
+                rows.Clear();
+                Fill();
+                UpdateTitle();
+                lbStatus.Text = "Чертёж закрыт — найдите рамки заново.";
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Выполнить действие внутри команды AutoCAD (FPRUN): безопасно для печати и правки чертежа,
+        /// пока окно открыто и с AutoCAD можно работать. bound=true — в чертеже, к которому относится список.
+        /// </summary>
+        void RunInCad(Action act, bool bound)
+        {
+            if (Commands.Pending != null)
+            {
+                MessageBox.Show(this, "FramePrint ещё выполняет предыдущее действие.", Text);
+                return;
+            }
+            AcDoc d = bound ? boundDoc : AcApp.DocumentManager.MdiActiveDocument;
+            if (d == null)
+            {
+                MessageBox.Show(this, bound ? "Сначала найдите рамки." : "Нет открытого чертежа.", Text);
+                return;
+            }
+            try
+            {
+                if (AcApp.DocumentManager.MdiActiveDocument != d) AcApp.DocumentManager.MdiActiveDocument = d;
+            }
+            catch { }
+            Commands.Pending = delegate
+            {
+                if (IsDisposed) return;
+                try { act(); }
+                catch (Exception ex) { Cursor = Cursors.Default; Err(ex); }
+                finally { Cursor = Cursors.Default; }
+            };
+            d.SendStringToExecute("\x03\x03_FPRUN ", true, false, false);
+        }
+
+        static void FocusDrawing()
+        {
+            try { Autodesk.AutoCAD.Internal.Utils.SetFocusToDwgView(); } catch { }
         }
 
         // ------------------------------------------------------------------ UI
@@ -290,6 +383,7 @@ namespace FramePrint
             if (cur >= 0 && cur < grid.Rows.Count) grid.CurrentCell = grid.Rows[cur].Cells[0];
             grid.ResumeLayout();
             lbStatus.Text = "Найдено рамок: " + rows.Count;
+            lbStatus.ForeColor = SystemColors.ControlText;
         }
 
         void OnCellChanged(object sender, DataGridViewCellEventArgs e)
@@ -363,7 +457,8 @@ namespace FramePrint
         void ShowRow(int i)
         {
             if (i < 0 || i >= rows.Count) return;
-            try { Cad.ZoomTo(rows[i]); } catch (Exception ex) { Err(ex); }
+            FrameRow f = rows[i];
+            RunInCad(delegate { Cad.ZoomTo(f); }, true);
         }
 
         // ---------------------------------------------------------------- действия
@@ -372,33 +467,31 @@ namespace FramePrint
             SaveToSettings();
             PrintTemplate t = Tpl;
             if (t == null) { MessageBox.Show(this, "Нет шаблона."); return; }
-            try
+            RunInCad(delegate
             {
                 List<ObjectId> only = null;
                 if (byWindow)
                 {
+                    FocusDrawing();
                     Editor ed = Cad.Doc.Editor;
-                    using (EditorUserInteraction ui = ed.StartUserInteraction(this))
-                    {
-                        PromptSelectionOptions po = new PromptSelectionOptions();
-                        po.MessageForAdding = "\nВыберите рамки: ";
-                        SelectionFilter flt = new SelectionFilter(new TypedValue[] { new TypedValue(0, "LWPOLYLINE,POLYLINE") });
-                        PromptSelectionResult r = ed.GetSelection(po, flt);
-                        ui.End();
-                        if (r.Status != PromptStatus.OK) return;
-                        only = new List<ObjectId>(r.Value.GetObjectIds());
-                    }
+                    PromptSelectionOptions po = new PromptSelectionOptions();
+                    po.MessageForAdding = "\nВыберите рамки: ";
+                    SelectionFilter flt = new SelectionFilter(new TypedValue[] { new TypedValue(0, "LWPOLYLINE,POLYLINE") });
+                    PromptSelectionResult r = ed.GetSelection(po, flt);
+                    if (r.Status != PromptStatus.OK) return;
+                    only = new List<ObjectId>(r.Value.GetObjectIds());
                 }
                 Cursor = Cursors.WaitCursor;
                 rows = Cad.FindFrames(st, t, only);
+                boundDoc = Cad.Doc;
                 foreach (FrameRow f in rows) f.Copies = 1;
                 Fill();
+                UpdateTitle();
+                Cursor = Cursors.Default;
                 if (rows.Count == 0)
                     MessageBox.Show(this, "Рамки не найдены.\nПроверьте слой (" + st.Layers + "), масштаб (" + st.Scales + ") и размеры в шаблоне «" + t.Name + "».",
                         Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            catch (Exception ex) { Err(ex); }
-            finally { Cursor = Cursors.Default; }
+            }, false);
         }
 
         void Numerate()
@@ -414,32 +507,27 @@ namespace FramePrint
             string ask = "Пронумеровать " + (idx.Count > 1 ? "выделенные листы (" + idx.Count + ")" : "все листы") +
                          " начиная с " + st.StartNumber + "?" + (st.SkipTitle ? "\nЛисты без штампа (титул) пропускаются." : "");
             if (MessageBox.Show(this, ask, Text, MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
-            try
+            RunInCad(delegate
             {
                 string msg = Cad.Numerate(st, target);
                 Fill();
                 MessageBox.Show(this, msg, Text);
-            }
-            catch (Exception ex) { Err(ex); }
+            }, true);
         }
 
         void SheetList()
         {
             if (rows.Count == 0) { MessageBox.Show(this, "Сначала найдите рамки."); return; }
-            try
+            double scale = st.VedScale > 0 ? st.VedScale : st.ScaleList()[0];
+            RunInCad(delegate
             {
-                double scale = st.VedScale > 0 ? st.VedScale : st.ScaleList()[0];
+                FocusDrawing();
                 Editor ed = Cad.Doc.Editor;
-                using (EditorUserInteraction ui = ed.StartUserInteraction(this))
-                {
-                    PromptPointResult r = ed.GetPoint("\nТочка вставки ведомости (левый верхний угол): ");
-                    ui.End();
-                    if (r.Status != PromptStatus.OK) return;
-                    Point3d p = r.Value.TransformBy(ed.CurrentUserCoordinateSystem);
-                    Cad.InsertSheetList(st, rows, p, scale);
-                }
-            }
-            catch (Exception ex) { Err(ex); }
+                PromptPointResult r = ed.GetPoint("\nТочка вставки ведомости (левый верхний угол): ");
+                if (r.Status != PromptStatus.OK) return;
+                Point3d p = r.Value.TransformBy(ed.CurrentUserCoordinateSystem);
+                Cad.InsertSheetList(st, rows, p, scale);
+            }, true);
         }
 
         void ExportCsv()
@@ -448,7 +536,7 @@ namespace FramePrint
             using (SaveFileDialog d = new SaveFileDialog())
             {
                 d.Filter = "CSV для Excel (*.csv)|*.csv";
-                d.FileName = Path.GetFileNameWithoutExtension(Cad.Doc.Name) + " - ведомость.csv";
+                d.FileName = Path.GetFileNameWithoutExtension(boundDoc != null ? boundDoc.Name : Cad.Doc.Name) + " - ведомость.csv";
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 try { Cad.ExportCsv(rows, d.FileName); } catch (Exception ex) { Err(ex); }
             }
@@ -465,21 +553,16 @@ namespace FramePrint
                     MessageBox.Show(this, "Файлу допуска СРО " + age + " дн. Продолжить с ним?", Text,
                         MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
             }
-            try
+            string tplName = cbTemplate.SelectedItem as string;
+            RunInCad(delegate
             {
                 Cursor = Cursors.WaitCursor;
-                string msg;
-                using (EditorUserInteraction ui = Cad.Doc.Editor.StartUserInteraction(this))
-                {
-                    msg = Cad.Publish(st, rows, pdf, cbTemplate.SelectedItem as string);
-                    ui.End();
-                }
+                string msg = Cad.Publish(st, rows, pdf, tplName);
                 Cursor = Cursors.Default;
                 // без замечаний — только строка в командной строке AutoCAD; с замечаниями — окно
                 try { Cad.Doc.Editor.WriteMessage("\nFramePrint: " + msg.Replace("\n", "\nFramePrint: ") + "\n"); } catch { }
                 if (!Cad.LastOk) MessageBox.Show(this, msg, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-            catch (Exception ex) { Cursor = Cursors.Default; Err(ex); }
+            }, true);
         }
 
         void EditTemplates()

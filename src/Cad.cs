@@ -58,7 +58,7 @@ namespace FramePrint
 
     public static class Cad
     {
-        public const string Version = "1.7.0";
+        public const string Version = "1.8.0";
 
         /// <summary>Последняя печать прошла без замечаний (тогда итог не показывается окном).</summary>
         public static bool LastOk;

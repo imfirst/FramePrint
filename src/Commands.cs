@@ -26,11 +26,33 @@ namespace FramePrint
         public void Terminate() { }
 
         /// <summary>Главное окно: поиск рамок, таблица печати, PDF, нумерация, ведомость.</summary>
+        static MainForm form;
+
+        /// <summary>Действие окна FramePrint, ожидающее выполнения внутри команды FPRUN.</summary>
+        public static Action Pending;
+
         [CommandMethod("FPRINT", CommandFlags.Modal)]
         public void ShowMain()
         {
-            using (MainForm f = new MainForm())
-                AcApp.ShowModalDialog(f);
+            if (form != null && !form.IsDisposed)
+            {
+                if (form.WindowState == System.Windows.Forms.FormWindowState.Minimized)
+                    form.WindowState = System.Windows.Forms.FormWindowState.Normal;
+                form.Activate();
+                return;
+            }
+            form = new MainForm();
+            form.FormClosed += delegate { form = null; Pending = null; };
+            AcApp.ShowModelessDialog(form);
+        }
+
+        /// <summary>Служебная: выполняет действие окна (печать, поиск, нумерация…) в контексте команды.</summary>
+        [CommandMethod("FPRUN", CommandFlags.Modal | CommandFlags.NoHistory)]
+        public void RunPending()
+        {
+            Action a = Pending;
+            Pending = null;
+            if (a != null) a();
         }
 
         /// <summary>Без окна: найти все рамки по текущим настройкам и опубликовать PDF.</summary>
