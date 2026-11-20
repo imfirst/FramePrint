@@ -58,7 +58,7 @@ namespace FramePrint
 
     public static class Cad
     {
-        public const string Version = "1.8.0";
+        public const string Version = "1.8.1";
 
         /// <summary>Последняя печать прошла без замечаний (тогда итог не показывается окном).</summary>
         public static bool LastOk;
@@ -899,13 +899,38 @@ namespace FramePrint
         }
 
         /// <summary>«Щукинская 3_ВиК_О_ЭОМ_2026-10-21» -> объект «Щукинская 3», дата «2026-10-21».</summary>
-        public static void SplitDwgName(string file, out string obj, out string date)
+        static readonly Regex CopySuffixRx = new Regex(
+            @"(\s*\(\d+\)|\s*[-–]\s*(копия|copy)(\s*\(\d+\))?|\s+(копия|copy))+\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        static readonly Regex CopyPrefixRx = new Regex(@"^(копия|copy of)\s+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        static readonly Regex DateRx = new Regex(
+            @"(?<!\d)(?:(?<y>\d{4})[-._](?<m>\d{1,2})[-._](?<d>\d{1,2})|(?<d>\d{1,2})[-._](?<m>\d{1,2})[-._](?<y>\d{4})|(?<y>\d{4})(?<m>\d{2})(?<d>\d{2}))(?!\d)",
+            RegexOptions.Compiled);
+
+        /// <summary>
+        /// «Щукинская 3_ВиК_О_ЭОМ_2026-10-21 (1)» -> объект «Щукинская 3», дата «2026-10-21».
+        /// Хвосты копий «(1)», «- копия», «Copy» отбрасываются. Дата ищется в имени в форматах
+        /// гггг-мм-дд, дд.мм.гггг, ггггммдд и приводится к формату fmt; если её нет — сегодняшняя.
+        /// </summary>
+        public static void SplitDwgName(string file, string fmt, out string obj, out string date)
         {
-            string[] parts = file.Split('_');
-            obj = parts[0].Trim();
-            date = "";
-            if (parts.Length > 1 && Regex.IsMatch(parts[parts.Length - 1], @"^\d{2,4}[-.]\d{2}[-.]\d{2,4}$"))
-                date = parts[parts.Length - 1];
+            if (string.IsNullOrEmpty(fmt)) fmt = "yyyy-MM-dd";
+            string clean = CopyPrefixRx.Replace(CopySuffixRx.Replace(file ?? "", ""), "").Trim();
+            DateTime dt = DateTime.Today;
+            bool found = false;
+            Match hit = null;
+            foreach (Match m in DateRx.Matches(clean))
+            {
+                int y = int.Parse(m.Groups["y"].Value, CultureInfo.InvariantCulture);
+                int mo = int.Parse(m.Groups["m"].Value, CultureInfo.InvariantCulture);
+                int d = int.Parse(m.Groups["d"].Value, CultureInfo.InvariantCulture);
+                if (y < 1990 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > DateTime.DaysInMonth(y, mo)) continue;
+                dt = new DateTime(y, mo, d); found = true; hit = m;   // берём последнюю дату в имени
+            }
+            date = dt.ToString(fmt, CultureInfo.InvariantCulture);
+            string rest = found ? clean.Remove(hit.Index, hit.Length) : clean;
+            obj = rest.Split('_')[0].Trim(' ', '-', '.', '_');
+            if (obj.Length == 0) obj = clean.Split('_')[0].Trim();
         }
 
         public static string OutputPath(Settings st, string dwgPath, List<FrameRow> rows, string templateName)
@@ -925,7 +950,7 @@ namespace FramePrint
             string pattern = string.IsNullOrEmpty(st.FileNamePattern) ? "{Файл}" : st.FileNamePattern;
             if (section.Length == 0 && pattern.Contains("{Раздел}")) pattern = "{Файл}";   // штамп не прочитан — имя как у чертежа
             string obj, fdate;
-            SplitDwgName(file, out obj, out fdate);
+            SplitDwgName(file, st.DateFormat, out obj, out fdate);
             string name = pattern
                 .Replace("{Файл}", file)
                 .Replace("{Объект}", obj)
